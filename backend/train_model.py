@@ -11,30 +11,28 @@ data = [
     ("Add dark mode", "Feature Requests"),
     ("Slow performance", "Performance"),
     ("UI is confusing", "UX/UI"),
-    ("Love the features", "Positive"),  # This will be filtered out later
     ("Fix the bug", "Bugs"),
     ("Good design", "UX/UI"),
     ("Implement login", "Feature Requests"),
-    ("Fast loading", "Positive"),  # This will be filtered out
+    ("Fast loading", "Performance"),
+    ("Love the features", "Feature Requests"),  # Add more examples...
 ]
 
-# Filter out non-category entries (e.g., "Positive")
-filtered_data = [item for item in data if item[1] not in ["Positive"]]
-
-X, y = zip(*filtered_data)
+X, y = zip(*data)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 vectorizer = TfidfVectorizer()
 X_train_tfidf = vectorizer.fit_transform(X_train)
 X_test_tfidf = vectorizer.transform(X_test)
 
-categorization_model = MultinomialNB()
-categorization_model.fit(X_train_tfidf, y_train)
+model = MultinomialNB()
+model.fit(X_train_tfidf, y_train)
 
-# Evaluate the model (optional)
-predictions = categorization_model.predict(X_test_tfidf)
-print(classification_report(y_test, predictions))
+print("Training Accuracy:", model.score(X_train_tfidf, y_train))
+print("Testing Accuracy:", model.score(X_test_tfidf, y_test))
+print("Classification Report:")
+print(classification_report(y_test, model.predict(X_test_tfidf)))
 
 # Save the model and vectorizer
-joblib.dump(categorization_model, "categorization_model.pkl")
+joblib.dump(model, "categorization_model.pkl")
 joblib.dump(vectorizer, "vectorizer.pkl")
