@@ -1,24 +1,27 @@
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-# Dummy data for training (replace with real labeled data)
+# Sample labeled data (replace with real data)
 data = [
-    ("Great app!", "Positive"),
-    ("Love the features!", "Positive"),
-    ("Fix the bug please.", "Bugs"),
-    ("UI is confusing.", "UX/UI"),
-    ("Add dark mode.", "Feature Requests"),
-    ("Slow performance.", "Performance"),
-    ("Good design.", "UX/UI"),
-    ("Crashes often.", "Bugs"),
-    ("Implement login.", "Feature Requests"),
-    ("Fast loading.", "Positive"),
+    ("App crashes often", "Bugs"),
+    ("Add dark mode", "Feature Requests"),
+    ("Slow performance", "Performance"),
+    ("UI is confusing", "UX/UI"),
+    ("Love the features", "Positive"),  # This will be filtered out later
+    ("Fix the bug", "Bugs"),
+    ("Good design", "UX/UI"),
+    ("Implement login", "Feature Requests"),
+    ("Fast loading", "Positive"),  # This will be filtered out
 ]
 
-X, y = zip(*data)
+# Filter out non-category entries (e.g., "Positive")
+filtered_data = [item for item in data if item[1] not in ["Positive"]]
+
+X, y = zip(*filtered_data)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 vectorizer = TfidfVectorizer()
