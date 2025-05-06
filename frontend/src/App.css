@@ -1,0 +1,75 @@
+.App {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 20px;
+  background-color: 1e1e1e;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.landing-page {
+  margin-top: 50px;
+}
+
+.input-field {
+  padding: 10px;
+  width: 300px;
+  margin-right: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.analyze-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #6c63ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.analyze-button:hover {
+  background-color: #5a52d6;
+}
+
+.error-message {
+  color: red;
+  margin-top: 10px;
+}
+
+.results-page {
+  margin-top: 50px;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+li {
+  margin: 5px 0;
+  font-size: 16px;
+}
+
+strong {
+  font-size: 18px;
+  color: #333;
+}
+
+.loading-spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-top: 4px solid #6c63ff;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+}
