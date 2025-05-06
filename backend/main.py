@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify
 from google_play_scraper import reviews_all
-from textblob import TextBlob
-from flask_cors import CORS
 from transformers import pipeline
+from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})  # Allow requests from Vite server
+
+# Load Sentiment Analysis Model
+sentiment_analyzer = pipeline("sentiment-analysis")
 
 def extract_app_id(url):
     try:
@@ -31,15 +33,6 @@ def get_reviews(app_id):
         print(f"Scraper error: {str(e)}")
         return []
 
-sentiment_analyzer = pipeline("sentiment-analysis")
-
-def analyze_sentiment(reviews):
-    results = sentiment_analyzer(reviews)
-    positive_count = sum(1 for result in results if result['label'] == 'POSITIVE')
-    negative_count = sum(1 for result in results if result['label'] == 'NEGATIVE')
-    neutral_count = len(results) - positive_count - negative_count
-    return {"positive": positive_count, "negative": negative_count, "neutral": neutral_count}
-
 @app.route('/analyze', methods=['POST', 'OPTIONS'])
 def analyze():
     if request.method == 'OPTIONS':
@@ -58,11 +51,26 @@ def analyze():
         if not reviews:
             return jsonify({"error": "No reviews found"}), 404
 
-        sentiment = analyze_sentiment(reviews)
+        sentiment_results = sentiment_analyzer(reviews)
+        positive_count = sum(1 for result in sentiment_results if result['label'] == 'POSITIVE')
+        negative_count = sum(1 for result in sentiment_results if result['label'] == 'NEGATIVE')
+        neutral_count = len(reviews) - positive_count - negative_count
+
+        categories = {
+            "Feature Requests": 0,  # Placeholder
+            "Bugs": 0,              # Placeholder
+            "UX/UI": 0,             # Placeholder
+            "Performance": 0        # Placeholder
+        }
+
         return jsonify({
-            "sentiment": sentiment,
+            "sentiment": {
+                "positive": positive_count,
+                "negative": negative_count,
+                "neutral": neutral_count
+            },
             "feedback": reviews[:10],
-            "categories": {"Feature Requests": 0, "Bugs": 0, "UX/UI": 0, "Performance": 0}
+            "categories": categories
         })
     except Exception as e:
         print(f"Fatal error: {str(e)}")
