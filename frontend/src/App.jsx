@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Line, Bar } from 'react-chartjs-2';
+import React, { useState, useEffect } from 'react';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import 'chart.js/auto'; // Required for Chart.js
 import "./App.css";
 
@@ -7,7 +7,7 @@ import "./App.css";
 const ErrorBoundary = ({ children }) => {
   const [hasError, setHasError] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleError = (error) => {
       console.error("Error in component:", error);
       setHasError(true);
@@ -29,6 +29,7 @@ function App() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState("1y"); // Default to 1 year
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,7 +47,7 @@ function App() {
       const response = await fetch("http://127.0.0.1:5000/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: appUrl }),
+        body: JSON.stringify({ url: appUrl, period: selectedPeriod }),
       });
 
       if (!response.ok) {
@@ -82,78 +83,70 @@ function App() {
     "Others": 0
   };
 
-  const trendsData = analysisResult?.trends || {};
   const clusters = analysisResult?.clusters || {};
   const solutions = analysisResult?.solutions || {};
 
-  // Prepare charts with default values
-  const sentimentChartData = {
+  // Semi-circle doughnut chart for all-time sentiment
+  const doughnutData = {
     labels: ["Delighted", "Happy", "Neutral", "Frustrated", "Angry"],
-    datasets: [
-      {
-        label: "# of Reviews",
-        data: [
-          sentimentData.Delighted || 0,
-          sentimentData.Happy || 0,
-          sentimentData.Neutral || 0,
-          sentimentData.Frustrated || 0,
-          sentimentData.Angry || 0
-        ],
-        backgroundColor: ['#6c63ff', '#4ecdc4', '#f7dc6f', '#ff5733', '#e74c3c'],
-        borderColor: ['#6c63ff', '#4ecdc4', '#f7dc6f', '#ff5733', '#e74c3c'],
-        borderWidth: 1,
-      }
-    ]
+    datasets: [{
+      data: [
+        sentimentData.Delighted,
+        sentimentData.Happy,
+        sentimentData.Neutral,
+        sentimentData.Frustrated,
+        sentimentData.Angry
+      ],
+      backgroundColor: ['#6c63ff', '#4ecdc4', '#f7dc6f', '#ff5733', '#e74c3c'],
+    }]
   };
 
-  const categoryChartData = {
-    labels: Object.keys(categoryData),
+  // Prepare stacked bar chart for sentiment trends
+  const filteredTrends = analysisResult?.trends || {};
+  const trendLabels = Object.keys(filteredTrends).sort();
+  const stackedData = {
+    labels: trendLabels,
     datasets: [
-      {
-        label: "# of Reviews",
-        data: Object.values(categoryData).map(count => count || 0),
-        backgroundColor: ['#ff6b6b', '#4ecdc4', '#f7dc6f', '#9b59b6', '#e74c3c'],
-        borderColor: ['#ff6347', '#1e90ff', '#228b22', '#ff1493', '#6c63ff'],
-        borderWidth: 1,
-      }
-    ]
-  };
-
-  const trendChartData = {
-    labels: Object.keys(trendsData),
-    datasets: [
-      {
-        label: "Delighted",
-        data: Object.values(trendsData).map(day => day.Delighted || 0),
-        borderColor: '#6c63ff',
-        fill: false
+      { 
+        label: "Delighted", 
+        data: trendLabels.map(d => filteredTrends[d]?.Delighted || 0), 
+        backgroundColor: '#6c63ff', 
+        stack: 'sentiment' 
       },
-      {
-        label: "Happy",
-        data: Object.values(trendsData).map(day => day.Happy || 0),
-        borderColor: '#4ecdc4',
-        fill: false
+      { 
+        label: "Happy", 
+        data: trendLabels.map(d => filteredTrends[d]?.Happy || 0), 
+        backgroundColor: '#4ecdc4', 
+        stack: 'sentiment' 
       },
-      {
-        label: "Neutral",
-        data: Object.values(trendsData).map(day => day.Neutral || 0),
-        borderColor: '#f7dc6f',
-        fill: false
+      { 
+        label: "Neutral", 
+        data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0), 
+        backgroundColor: '#f7dc6f', 
+        stack: 'sentiment' 
       },
-      {
-        label: "Frustrated",
-        data: Object.values(trendsData).map(day => day.Frustrated || 0),
-        borderColor: '#ff5733',
-        fill: false
+      { 
+        label: "Frustrated", 
+        data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0), 
+        backgroundColor: '#ff5733', 
+        stack: 'sentiment' 
       },
-      {
-        label: "Angry",
-        data: Object.values(trendsData).map(day => day.Angry || 0),
-        borderColor: '#e74c3c',
-        fill: false
+      { 
+        label: "Angry", 
+        data: trendLabels.map(d => filteredTrends[d]?.Angry || 0), 
+        backgroundColor: '#e74c3c', 
+        stack: 'sentiment' 
       },
     ]
   };
+  
+  // Generalized feedback table
+  const feedbackTable = Object.entries(clusters).map(([category, reviews]) => ({
+    category,
+    summary: reviews.slice(0, 3).join(", "),
+    solution: solutions[category] || "N/A",
+    count: reviews.length
+  }));
 
   return (
     <div className="App">
@@ -182,125 +175,90 @@ function App() {
           <div className="results-page">
             <h2>Analysis Results</h2>
 
-            {/* Sentiment Distribution */}
+            {/* All-Time Sentiment (Semi-circle Doughnut) */}
             <div className="chart-container">
-              <Bar 
-                data={sentimentChartData} 
+              <Doughnut 
+                data={doughnutData}
                 options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
+                  cutout: '70%',
+                  rotation: Math.PI,
+                  circumference: Math.PI,
                   plugins: {
-                    legend: { position: 'top' },
-                    title: { display: true, text: 'Sentiment Distribution' }
-                  }
+                    legend: { position: 'right' }
+                  },
+                  maintainAspectRatio: false,
                 }}
               />
             </div>
 
-            {/* Feedback Categories */}
+            {/* Periodic Sentiment Trends (Stacked Bar) */}
             <div className="chart-container">
               <Bar 
-                data={categoryChartData} 
+                data={stackedData}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: 'right' },
-                    title: { display: true, text: 'Feedback Categories' }
-                  }
-                }}
-              />
-            </div>
-
-            {/* Sentiment Trends */}
-            <div className="chart-container">
-              <Line 
-                data={{
-                  labels: Object.keys(trendsData),
-                  datasets: [
-                    {
-                      label: "Delighted",
-                      data: Object.values(trendsData).map(day => day.Delighted || 0),
-                      borderColor: '#6c63ff',
-                      fill: false
-                    },
-                    {
-                      label: "Happy",
-                      data: Object.values(trendsData).map(day => day.Happy || 0),
-                      borderColor: '#4ecdc4',
-                      fill: false
-                    },
-                    {
-                      label: "Neutral",
-                      data: Object.values(trendsData).map(day => day.Neutral || 0),
-                      borderColor: '#f7dc6f',
-                      fill: false
-                    },
-                    {
-                      label: "Frustrated",
-                      data: Object.values(trendsData).map(day => day.Frustrated || 0),
-                      borderColor: '#ff5733',
-                      fill: false
-                    },
-                    {
-                      label: "Angry",
-                      data: Object.values(trendsData).map(day => day.Angry || 0),
-                      borderColor: '#e74c3c',
-                      fill: false
-                    },
-                  ]
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
+                  scales: {
+                    x: { stacked: true },
+                    y: { stacked: true }
+                  },
                   plugins: {
                     legend: { position: 'top' },
                     title: { display: true, text: 'Sentiment Trends' }
                   }
                 }}
               />
+              <select
+                value={selectedPeriod}
+                onChange={(e) => setSelectedPeriod(e.target.value)}
+                className="period-selector"
+              >
+                <option value="1y">1 Year</option>
+                <option value="6m">6 Months</option>
+                <option value="3m">3 Months</option>
+                <option value="1m">1 Month</option>
+                <option value="1w">1 Week</option>
+              </select>
             </div>
 
-            {/* Feedback Clusters */}
-            <div className="feedback-analysis">
-              <h3>Feedback Clusters</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Feedback Samples</th>
-                    <th>Solution</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(clusters).map(([category, samples], index) => (
-                    <tr key={index}>
-                      <td>{category}</td>
-                      <td>{samples.slice(0, 5).join("\n")}</td>
-                      <td>{solutions[category] || "N/A"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Feedback Categories (Segmented Progress Bar) */}
+            <div className="segmented-progress">
+              <h3>Feedback Categories</h3>
+              <div className="progress-container">
+                {Object.entries(categoryData).map(([category, count]) => (
+                  <div key={category} className="progress-bar">
+                    <div
+                      className="bar"
+                      style={{
+                        width: `${(count / Object.values(categoryData).reduce((a, b) => a + b, 0)) * 100}%`,
+                        backgroundColor: getCategoryColor(category)
+                      }}
+                    ></div>
+                    <span>{category}: {count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* Sample Feedback */}
+            {/* Generalized Feedback Table */}
             <div className="feedback-table">
-              <h3>Sample Feedback</h3>
+              <h3>Generalized Feedback</h3>
               <table>
                 <thead>
                   <tr>
-                    <th>Review</th>
                     <th>Category</th>
+                    <th>Feedback Summary</th>
                     <th>Solution</th>
+                    <th>Count</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(analysisResult.feedback || []).map((item, index) => (
+                  {feedbackTable.map((item, index) => (
                     <tr key={index}>
-                      <td>{item.content}</td>
                       <td>{item.category}</td>
+                      <td>{item.summary}</td>
                       <td>{item.solution}</td>
+                      <td>{item.count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -312,5 +270,17 @@ function App() {
     </div>
   );
 }
+
+// Helper function to map category to color
+const getCategoryColor = (category) => {
+  const colorMap = {
+    "Feature Requests": '#ff6b6b',
+    "Bugs": '#4ecdc4',
+    "UX/UI": '#f7dc6f',
+    "Performance": '#9b59b6',
+    "Others": '#e74c3c'
+  };
+  return colorMap[category] || '#6c63ff';
+};
 
 export default App;

@@ -1,17 +1,17 @@
-from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask import Flask, request, jsonify
 from google_play_scraper import reviews_all
 from transformers import pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 import joblib
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
-CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})  # Allow requests from frontend
+CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})
 
 # Load Sentiment Analysis Model (5-level)
 sentiment_analyzer = pipeline(
@@ -44,12 +44,12 @@ def get_reviews(app_id):
             app_id,
             lang="en",
             country="us",
-            count=200  # Fetch more reviews for trends
+            count=500  # Fetch more reviews for trends
         )
         return [
             {
                 "content": review["content"],
-                "date": review["at"].strftime("%Y-%m-%d")  # Extract date
+                "date": review["at"].strftime("%Y-%m-%d") if "at" in review else "N/A"
             }
             for review in reviews
         ]
@@ -58,22 +58,25 @@ def get_reviews(app_id):
         return []
 
 def get_sentiment_label(review_content):
-    scores = sentiment_analyzer(review_content)[0]
-    max_score = max(scores, key=lambda x: x['score'])
-    label = max_score['label']
-    
-    # Map to 5-level sentiment
-    if label == 'positive':
-        if max_score['score'] >= 0.8:
-            return 'Delighted'
+    try:
+        scores = sentiment_analyzer(review_content)[0]
+        max_score = max(scores, key=lambda x: x['score'])
+        label = max_score['label']
+        
+        # Adjust thresholds for better accuracy
+        if label == 'positive':
+            if max_score['score'] >= 0.7:  # Lower threshold for Delighted
+                return 'Delighted'
+            else:
+                return 'Happy'
+        elif label == 'negative':
+            if max_score['score'] >= 0.7:  # Lower threshold for Angry
+                return 'Angry'
+            else:
+                return 'Frustrated'
         else:
-            return 'Happy'
-    elif label == 'negative':
-        if max_score['score'] >= 0.8:
-            return 'Angry'
-        else:
-            return 'Frustrated'
-    else:
+            return 'Neutral'
+    except:
         return 'Neutral'
 
 def analyze_sentiment(reviews):
@@ -93,28 +96,37 @@ def analyze_sentiment(reviews):
 
 def categorize_feedback(reviews):
     if not categorization_model or not vectorizer:
-        return {"Error": "Feedback categorization model not found."}
+        return {
+            "Feature Requests": 0,
+            "Bugs": 0,
+            "UX/UI": 0,
+            "Performance": 0,
+            "Others": 0
+        }
     
-    X = vectorizer.transform([review["content"] for review in reviews])
-    predictions = categorization_model.predict(X)
-    
-    categories = {
-        "Feature Requests": 0,
-        "Bugs": 0,
-        "UX/UI": 0,
-        "Performance": 0,
-        "Others": 0
-    }
-    
-    for pred in predictions:
-        if pred in categories:
-            categories[pred] += 1
-        else:
-            categories["Others"] += 1
-    
-    return categories
+    try:
+        X = vectorizer.transform([review["content"] for review in reviews])
+        predictions = categorization_model.predict(X)
+        
+        categories = {
+            "Feature Requests": 0,
+            "Bugs": 0,
+            "UX/UI": 0,
+            "Performance": 0,
+            "Others": 0
+        }
+        
+        for pred in predictions:
+            if pred in categories:
+                categories[pred] += 1
+            else:
+                categories["Others"] += 1
+        
+        return categories
+    except:
+        return categories
 
-def calculate_sentiment_trends(reviews):
+def calculate_sentiment_trends(reviews, period="1y"):
     trends = defaultdict(lambda: {
         "Delighted": 0,
         "Happy": 0,
@@ -123,10 +135,29 @@ def calculate_sentiment_trends(reviews):
         "Angry": 0
     })
     
+    cutoff = datetime.now()
+    if period == "1y":
+        cutoff -= timedelta(days=365)
+    elif period == "6m":
+        cutoff -= timedelta(days=180)
+    elif period == "3m":
+        cutoff -= timedelta(days=90)
+    elif period == "1m":
+        cutoff -= timedelta(days=30)
+    elif period == "1w":
+        cutoff -= timedelta(days=7)
+    
     for review in reviews:
-        date = review["date"]
+        date_str = review["date"]
+        if date_str == "N/A":
+            continue
+        
+        review_date = datetime.strptime(date_str, "%Y-%m-%d")
+        if review_date < cutoff:
+            continue
+        
         label = get_sentiment_label(review["content"])
-        trends[date][label] += 1
+        trends[date_str][label] += 1
     
     return dict(trends)
 
@@ -135,9 +166,12 @@ def cluster_feedback(reviews):
     
     for review in reviews:
         if categorization_model and vectorizer:
-            category = categorization_model.predict(
-                vectorizer.transform([review["content"]])
-            )[0]
+            try:
+                category = categorization_model.predict(
+                    vectorizer.transform([review["content"]])
+                )[0]
+            except:
+                category = "Others"
         else:
             category = "Others"
         clusters[category].append(review["content"])
@@ -160,6 +194,7 @@ def suggest_solutions(clusters):
 def analyze():
     try:
         app_url = request.json.get('url', '')
+        period = request.json.get('period', '1y')  # Add period parameter
         if not app_url:
             return jsonify({"error": "No URL provided"}), 400
 
@@ -169,35 +204,62 @@ def analyze():
 
         reviews = get_reviews(app_id)
         if not reviews:
-            return jsonify({"error": "No reviews found"}), 404
+            return jsonify({
+                "error": "No reviews found",
+                "sentiment": {
+                    "Delighted": 0,
+                    "Happy": 0,
+                    "Neutral": 0,
+                    "Frustrated": 0,
+                    "Angry": 0
+                },
+                "categories": {
+                    "Feature Requests": 0,
+                    "Bugs": 0,
+                    "UX/UI": 0,
+                    "Performance": 0,
+                    "Others": 0
+                },
+                "trends": {},
+                "clusters": {},
+                "solutions": {},
+                "feedback": []
+            }), 404
 
-        # Calculate sentiment distribution
+        # Calculate sentiment
         sentiment = analyze_sentiment(reviews)
         
         # Categorize feedback
         categories = categorize_feedback(reviews)
         
-        # Calculate sentiment trends
-        trends = calculate_sentiment_trends(reviews)
+        # Calculate trends for the selected period
+        trends = calculate_sentiment_trends(reviews, period)
         
         # Cluster feedback and solutions
         clusters = cluster_feedback(reviews)
         solutions = suggest_solutions(clusters)
         
-        # Prepare sample feedback with categories
+        # Prepare feedback items
         categorized_feedback = []
         if categorization_model and vectorizer:
             X = vectorizer.transform([review["content"] for review in reviews])
             predictions = categorization_model.predict(X)
             
-            for i, review in enumerate(reviews[:10]):
+            for i in range(min(10, len(reviews))):
                 categorized_feedback.append({
-                    "content": review["content"],
+                    "content": reviews[i]["content"],
                     "category": predictions[i],
                     "solution": solutions.get(predictions[i], "N/A")
                 })
         else:
-            categorized_feedback = [{"content": review["content"], "category": "N/A", "solution": "N/A"} for review in reviews[:10]]
+            categorized_feedback = [
+                {
+                    "content": review["content"],
+                    "category": "N/A",
+                    "solution": "Model not found"
+                }
+                for review in reviews[:10]
+            ]
         
         return jsonify({
             "sentiment": sentiment,
@@ -208,7 +270,6 @@ def analyze():
             "feedback": categorized_feedback
         })
     except Exception as e:
-        print(f"Fatal error: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
