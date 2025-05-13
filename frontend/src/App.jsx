@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import 'chart.js/auto'; // Required for Chart.js
 import "./App.css";
@@ -31,6 +31,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("1y"); // Default to 1 year
 
+  const resultsContainerRef = useRef(null); // Track scroll position
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
@@ -43,6 +45,9 @@ function App() {
       return;
     }
 
+    // Save current scroll position
+    const scrollTop = resultsContainerRef.current?.scrollTop || 0;
+
     try {
       const response = await fetch("http://127.0.0.1:5000/analyze", {
         method: "POST",
@@ -51,6 +56,7 @@ function App() {
       });
 
       if (!response.ok) {
+        setAnalysisResult(null);
         const errorData = await response.json();
         setErrorMessage(errorData.error || "Unknown error");
         setLoading(false);
@@ -58,12 +64,18 @@ function App() {
       }
 
       const data = await response.json();
+      console.log("Analysis Result:", data); // Debugging
       setAnalysisResult(data);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setAnalysisResult(null);
       setErrorMessage("Failed to analyze feedback. Check the URL or try again.");
     } finally {
       setLoading(false);
+      // Restore scroll position
+      if (resultsContainerRef.current) {
+        resultsContainerRef.current.scrollTop = scrollTop;
+      }
     }
   };
 
@@ -83,10 +95,44 @@ function App() {
     "Others": 0
   };
 
-  const clusters = analysisResult?.clusters || {};
-  const solutions = analysisResult?.solutions || {};
+  const filteredTrends = analysisResult?.trends || {};
+  const trendLabels = Object.keys(filteredTrends).sort().slice(-50); // Limit to last 50 days
+  const stackedData = {
+    labels: trendLabels,
+    datasets: [
+      {
+        label: "Delighted",
+        data: trendLabels.map(d => filteredTrends[d]?.Delighted || 0),
+        backgroundColor: '#6c63ff',
+        stack: 'sentiment'
+      },
+      {
+        label: "Happy",
+        data: trendLabels.map(d => filteredTrends[d]?.Happy || 0),
+        backgroundColor: '#4ecdc4',
+        stack: 'sentiment'
+      },
+      {
+        label: "Neutral",
+        data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0),
+        backgroundColor: '#f7dc6f',
+        stack: 'sentiment'
+      },
+      {
+        label: "Frustrated",
+        data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0),
+        backgroundColor: '#ff5733',
+        stack: 'sentiment'
+      },
+      {
+        label: "Angry",
+        data: trendLabels.map(d => filteredTrends[d]?.Angry || 0),
+        backgroundColor: '#e74c3c',
+        stack: 'sentiment'
+      },
+    ]
+  };
 
-  // Semi-circle doughnut chart for all-time sentiment
   const doughnutData = {
     labels: ["Delighted", "Happy", "Neutral", "Frustrated", "Angry"],
     datasets: [{
@@ -101,45 +147,9 @@ function App() {
     }]
   };
 
-  // Prepare stacked bar chart for sentiment trends
-  const filteredTrends = analysisResult?.trends || {};
-  const trendLabels = Object.keys(filteredTrends).sort();
-  const stackedData = {
-    labels: trendLabels,
-    datasets: [
-      { 
-        label: "Delighted", 
-        data: trendLabels.map(d => filteredTrends[d]?.Delighted || 0), 
-        backgroundColor: '#6c63ff', 
-        stack: 'sentiment' 
-      },
-      { 
-        label: "Happy", 
-        data: trendLabels.map(d => filteredTrends[d]?.Happy || 0), 
-        backgroundColor: '#4ecdc4', 
-        stack: 'sentiment' 
-      },
-      { 
-        label: "Neutral", 
-        data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0), 
-        backgroundColor: '#f7dc6f', 
-        stack: 'sentiment' 
-      },
-      { 
-        label: "Frustrated", 
-        data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0), 
-        backgroundColor: '#ff5733', 
-        stack: 'sentiment' 
-      },
-      { 
-        label: "Angry", 
-        data: trendLabels.map(d => filteredTrends[d]?.Angry || 0), 
-        backgroundColor: '#e74c3c', 
-        stack: 'sentiment' 
-      },
-    ]
-  };
-  
+  const clusters = analysisResult?.clusters || {};
+  const solutions = analysisResult?.solutions || {};
+
   // Generalized feedback table
   const feedbackTable = Object.entries(clusters).map(([category, reviews]) => ({
     category,
@@ -172,7 +182,14 @@ function App() {
         )}
 
         {analysisResult && (
-          <div className="results-page">
+          <div 
+            className="results-page" 
+            ref={resultsContainerRef}
+            style={{
+              overflowY: 'auto',
+              maxHeight: 'calc(100vh - 200px)'
+            }}
+          >
             <h2>Analysis Results</h2>
 
             {/* All-Time Sentiment (Semi-circle Doughnut) */}
@@ -188,6 +205,7 @@ function App() {
                   },
                   maintainAspectRatio: false,
                 }}
+                height={400}
               />
             </div>
 
@@ -199,14 +217,16 @@ function App() {
                   responsive: true,
                   maintainAspectRatio: false,
                   scales: {
-                    x: { stacked: true },
+                    x: { stacked: true, maxBarThickness: 40 },
                     y: { stacked: true }
                   },
                   plugins: {
                     legend: { position: 'top' },
                     title: { display: true, text: 'Sentiment Trends' }
-                  }
+                  },
+                  aspectRatio: 2.5
                 }}
+                height={400}
               />
               <select
                 value={selectedPeriod}

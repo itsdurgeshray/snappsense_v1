@@ -7,10 +7,95 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow-y: auto;
 }
 
 .landing-page {
   margin-top: 50px;
+  padding-bottom: 20px;
+}
+
+.results-page {
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 1200px;
+  transition: opacity 0.3s ease;
+}
+
+.results-page[style*="none"] {
+  opacity: 0;
+}
+
+.chart-container {
+  margin-bottom: 30px;
+  width: 100%;
+  max-width: 800px;
+  overflow: hidden;
+}
+
+.chart-container > div {
+  max-width: 100%;
+  height: 400px;
+}
+
+.segmented-progress {
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: 800px;
+}
+
+.progress-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.progress-bar {
+  width: 200px;
+  height: 20px;
+  background-color: #f0f0f0;
+  border-radius: 10px;
+  position: relative;
+}
+
+.progress-bar .bar {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.feedback-table {
+  width: 100%;
+  max-width: 800px;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.feedback-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.feedback-table th,
+.feedback-table td {
+  padding: 10px;
+  border: 1px solid #ddd;
+}
+
+.feedback-table th {
+  background-color: #f0f0f0;
+}
+
+.feedback-table td:nth-child(2) {
+  white-space: pre-line;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .input-field {
@@ -54,81 +139,9 @@
   100% { transform: rotate(360deg); }
 }
 
-.chart-container {
-  margin-bottom: 30px;
-  width: 100%;
-  max-width: 800px;
-  overflow: hidden;
-}
-
 .period-selector {
   margin-top: 10px;
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
-}
-
-.segmented-progress {
-  margin-bottom: 20px;
-  width: 100%;
-  max-width: 800px;
-}
-
-.progress-container {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.progress-bar {
-  width: 200px;
-  height: 20px;
-  background-color: #f0f0f0;
-  border-radius: 10px;
-  position: relative;
-  margin-bottom: 10px;
-}
-
-.progress-bar .bar {
-  height: 100%;
-  border-radius: 10px;
-  transition: width 0.3s ease;
-}
-
-.progress-bar span {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-size: 12px;
-}
-
-.feedback-table table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-
-.feedback-table th,
-.feedback-table td {
-  padding: 10px;
-  border: 1px solid #ddd;
-}
-
-.feedback-table th {
-  background-color: #f0f0f0;
-}
-
-.results-page {
-  padding: 20px;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  max-width: 1200px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
