@@ -114,12 +114,18 @@ def categorize_feedback(reviews):
         
         candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
         
+        total_reviews = len(reviews)
+        
         for review in reviews:
             result = categorization_model(review["content"], candidate_labels)
             max_score_index = result['scores'].index(max(result['scores']))
             category = result['labels'][max_score_index]
             
             categories[category] += 1
+        
+        # Calculate percentages
+        for category in categories:
+            categories[category] = round((categories[category] / total_reviews) * 100, 2) if total_reviews > 0 else 0
         
         return categories
     except Exception as e:
