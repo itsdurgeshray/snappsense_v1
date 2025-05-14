@@ -426,3 +426,61 @@ select:focus {
 .feedback-table:focus-within {
   box-shadow: 0 4px 8px rgba(108, 99, 255, 0.3); /* Subtle shadow on focus */
 }
+
+/* Segmented Progress Bars */
+.segmented-progress {
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: 800px;
+  background-color: #ffffff; /* Ensure progress bars have a white background */
+  border: 1px solid #dddddd; /* Subtle border for separation */
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+}
+
+.progress-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.progress-bar {
+  width: 100%; /* Full width for each segment */
+  height: 20px;
+  background-color: #f0f0f0; /* Light grey background */
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar .bar {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ffffff; /* White text for contrast */
+  font-size: 12px;
+  z-index: 1;
+}
+
+.progress-bar:nth-child(n+2) {
+  margin-left: 10px; /* Add spacing between segments */
+}
+
+.progress-bar:first-child .bar {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.progress-bar:last-child .bar {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
