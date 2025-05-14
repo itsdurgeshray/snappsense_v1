@@ -98,35 +98,35 @@ function App() {
   const filteredTrends = analysisResult?.trends || {};
   const trendLabels = Object.keys(filteredTrends).sort().slice(-50); // Limit to last 50 days
   const stackedData = {
-    labels: trendLabels,
+    labels: ["Sentiment Trends"],
     datasets: [
       {
         label: "Delighted",
-        data: trendLabels.map(d => filteredTrends[d]?.Delighted || 0),
+        data: [sentimentData.Delighted],
         backgroundColor: '#6c63ff',
         stack: 'sentiment'
       },
       {
         label: "Happy",
-        data: trendLabels.map(d => filteredTrends[d]?.Happy || 0),
+        data: [sentimentData.Happy],
         backgroundColor: '#4ecdc4',
         stack: 'sentiment'
       },
       {
         label: "Neutral",
-        data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0),
+        data: [sentimentData.Neutral],
         backgroundColor: '#f7dc6f',
         stack: 'sentiment'
       },
       {
         label: "Frustrated",
-        data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0),
+        data: [sentimentData.Frustrated],
         backgroundColor: '#ff5733',
         stack: 'sentiment'
       },
       {
         label: "Angry",
-        data: trendLabels.map(d => filteredTrends[d]?.Angry || 0),
+        data: [sentimentData.Angry],
         backgroundColor: '#e74c3c',
         stack: 'sentiment'
       },
@@ -157,6 +157,43 @@ function App() {
     solution: solutions[category] || "N/A",
     count: reviews.length
   }));
+
+  // Feedback Categories Segmented Bar Chart Data
+  const feedbackCategoriesData = {
+    labels: ["Feedback Categories"],
+    datasets: [
+      {
+        label: "Feature Requests",
+        data: [categoryData["Feature Requests"]],
+        backgroundColor: '#ff6b6b',
+        stack: 'feedback'
+      },
+      {
+        label: "Bugs",
+        data: [categoryData["Bugs"]],
+        backgroundColor: '#4ecdc4',
+        stack: 'feedback'
+      },
+      {
+        label: "UX/UI",
+        data: [categoryData["UX/UI"]],
+        backgroundColor: '#f7dc6f',
+        stack: 'feedback'
+      },
+      {
+        label: "Performance",
+        data: [categoryData["Performance"]],
+        backgroundColor: '#9b59b6',
+        stack: 'feedback'
+      },
+      {
+        label: "Others",
+        data: [categoryData["Others"]],
+        backgroundColor: '#e74c3c',
+        stack: 'feedback'
+      },
+    ]
+  };
 
   return (
     <div className="App">
@@ -193,21 +230,21 @@ function App() {
             <h2>Analysis Results</h2>
 
             {/* All-Time Sentiment (Semi-circle Doughnut) */}
-            <div className="chart-container">
-              <Doughnut 
-                data={doughnutData}
-                options={{
-                  cutout: '70%',
-                  rotation: Math.PI,
-                  circumference: Math.PI,
-                  plugins: {
-                    legend: { position: 'right' }
-                  },
-                  maintainAspectRatio: false,
-                }}
-                height={400}
-              />
-            </div>
+                    <div className="chart-container">
+          <Doughnut 
+            data={doughnutData}
+            options={{
+              cutout: '70%',
+              rotation: Math.PI,
+              circumference: Math.PI,
+              plugins: {
+                legend: { position: 'right' }
+              },
+              maintainAspectRatio: false,
+            }}
+            height={400}
+          />
+        </div>
 
             {/* Periodic Sentiment Trends (Stacked Bar) */}
             <div className="chart-container">
@@ -245,16 +282,16 @@ function App() {
             <div className="segmented-progress">
               <h3>Feedback Categories</h3>
               <div className="progress-container">
-                {Object.entries(categoryData).map(([category, count]) => (
+                {Object.entries(categoryData).map(([category, percentage]) => (
                   <div key={category} className="progress-bar">
                     <div
                       className="bar"
                       style={{
-                        width: `${(count / Object.values(categoryData).reduce((a, b) => a + b, 0)) * 100}%`,
+                        width: `${percentage}%`,
                         backgroundColor: getCategoryColor(category)
                       }}
                     ></div>
-                    <span>{category}: {count}</span>
+                    <span>{category}: {percentage}%</span>
                   </div>
                 ))}
               </div>
