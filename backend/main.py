@@ -1,24 +1,23 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from google_play_scraper import reviews_all
 from transformers import pipeline
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})
 
-# Load Sentiment Analysis Model (5-level using VADER)
+# Load VADER for compound scores
 vader_analyzer = SentimentIntensityAnalyzer()
 
-# Load Feedback Categorization Model (Hugging Face)
+# Load Zero-shot Classifier (BART for categorization)
 try:
     categorization_model = pipeline(
         "zero-shot-classification",
-        model="facebook/bart-large-mnli",
-        multi_class=True  # Enable multi-class classification
+        model="facebook/bart-large-mnli"
     )
 except Exception as e:
     print(f"Model loading error: {str(e)}")
@@ -31,7 +30,8 @@ def extract_app_id(url):
         if parsed_url.netloc != "play.google.com" or "id" not in query_params:
             return None
         return query_params["id"][0]
-    except Exception:
+    except Exception as e:
+        print(f"URL parsing error: {str(e)}")
         return None
 
 def get_reviews(app_id):
@@ -40,7 +40,8 @@ def get_reviews(app_id):
             app_id,
             lang="en",
             country="us",
-            count=1000  # Fetch more reviews for better analysis
+            count=1000,
+            sleep_milliseconds=500  # Rate limiting
         )
         return [
             {
@@ -58,9 +59,13 @@ def get_sentiment_label(review_content):
         vader_scores = vader_analyzer.polarity_scores(review_content)
         compound_score = vader_scores['compound']
         
-        if compound_score >= 0.3:  # Lowered threshold from 0.6
+        if compound_score >= 0.5:
+            return 'Delighted'
+        elif compound_score >= 0.1:
             return 'Happy'
-        elif compound_score <= -0.3:  # Lowered threshold from -0.6
+        elif compound_score <= -0.5:
+            return 'Angry'
+        elif compound_score <= -0.1:
             return 'Frustrated'
         else:
             return 'Neutral'
@@ -70,9 +75,11 @@ def get_sentiment_label(review_content):
 
 def analyze_sentiment(reviews):
     sentiment_counts = {
+        "Delighted": 0,
         "Happy": 0,
         "Neutral": 0,
-        "Frustrated": 0
+        "Frustrated": 0,
+        "Angry": 0
     }
     
     for review in reviews:
@@ -93,7 +100,6 @@ def categorize_feedback(reviews):
     
     try:
         candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
-        
         categories = defaultdict(int)
         total_reviews = len(reviews)
         
@@ -101,7 +107,7 @@ def categorize_feedback(reviews):
             result = categorization_model(
                 review["content"],
                 candidate_labels,
-                multi_class=True  # Ensure multi-class classification
+                multi_class=True
             )
             max_score_index = result['scores'].index(max(result['scores']))
             category = result['labels'][max_score_index]
@@ -125,9 +131,11 @@ def categorize_feedback(reviews):
 
 def calculate_sentiment_trends(reviews, period="1y"):
     trends = defaultdict(lambda: {
+        "Delighted": 0,
         "Happy": 0,
         "Neutral": 0,
-        "Frustrated": 0
+        "Frustrated": 0,
+        "Angry": 0
     })
     
     cutoff = datetime.now()
@@ -156,48 +164,11 @@ def calculate_sentiment_trends(reviews, period="1y"):
     
     return dict(trends)
 
-def cluster_feedback(reviews):
-    clusters = defaultdict(list)
-    
-    if not categorization_model:
-        return clusters
-    
-    try:
-        candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
-        
-        for review in reviews:
-            result = categorization_model(
-                review["content"],
-                candidate_labels,
-                multi_class=True  # Ensure multi-class classification
-            )
-            max_score_index = result['scores'].index(max(result['scores']))
-            category = result['labels'][max_score_index]
-            
-            clusters[category].append(review["content"])
-    
-    except Exception as e:
-        print(f"Clustering error: {str(e)}")
-    
-    return clusters
-
-def suggest_solutions(clusters):
-    solutions = {}
-    for category in clusters.keys():
-        solutions[category] = {
-            "Feature Requests": "Consider adding the requested feature.",
-            "Bugs": "Investigate and fix the reported issue.",
-            "UX/UI": "Redesign the interface for better usability.",
-            "Performance": "Optimize app performance to reduce lag.",
-            "Others": "Review feedback for further analysis."
-        }.get(category, "No solution available.")
-    return solutions
-
 @app.route('/analyze', methods=['POST'])
 def analyze():
     try:
         app_url = request.json.get('url', '')
-        period = request.json.get('period', '1y')  # Add period parameter
+        period = request.json.get('period', '1y')
         if not app_url:
             return jsonify({"error": "No URL provided"}), 400
 
@@ -210,9 +181,11 @@ def analyze():
             return jsonify({
                 "error": "No reviews found",
                 "sentiment": {
+                    "Delighted": 0,
                     "Happy": 0,
                     "Neutral": 0,
-                    "Frustrated": 0
+                    "Frustrated": 0,
+                    "Angry": 0
                 },
                 "categories": {
                     "Feature Requests": 0,
@@ -222,52 +195,42 @@ def analyze():
                     "Others": 0
                 },
                 "trends": {},
-                "clusters": {},
-                "solutions": {},
                 "feedback": []
             }), 404
 
         # Calculate sentiment
         sentiment = analyze_sentiment(reviews)
-        print("Sentiment Distribution:", sentiment)  # Log sentiment distribution
         
         # Categorize feedback
         categories = categorize_feedback(reviews)
-        print("Feedback Categories:", categories)  # Log feedback categories
         
-        # Calculate trends for the selected period
+        # Calculate trends
         trends = calculate_sentiment_trends(reviews, period)
-        print("Sentiment Trends:", trends)  # Log sentiment trends
-        
-        # Cluster feedback and solutions
-        clusters = cluster_feedback(reviews)
-        solutions = suggest_solutions(clusters)
         
         # Prepare feedback items
         categorized_feedback = []
         if categorization_model:
-            candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
-            
             for review in reviews[:10]:
                 result = categorization_model(
                     review["content"],
-                    candidate_labels,
+                    ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"],
                     multi_class=True
                 )
                 max_score_index = result['scores'].index(max(result['scores']))
                 category = result['labels'][max_score_index]
-                
                 categorized_feedback.append({
                     "content": review["content"],
                     "category": category,
-                    "solution": solutions.get(category, "N/A")
+                    "solution": "N/A",
+                    "count": 1
                 })
         else:
             categorized_feedback = [
                 {
                     "content": review["content"],
                     "category": "N/A",
-                    "solution": "Model not found"
+                    "solution": "Model not found",
+                    "count": 1
                 }
                 for review in reviews[:10]
             ]
@@ -276,18 +239,19 @@ def analyze():
             "sentiment": sentiment,
             "categories": categories,
             "trends": trends,
-            "clusters": clusters,
-            "solutions": solutions,
             "feedback": categorized_feedback
         })
     except Exception as e:
-        print(f"Fatal error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
-            "error": "Internal server error",
+            "error": f"Internal server error: {str(e)}",
             "sentiment": {
+                "Delighted": 0,
                 "Happy": 0,
                 "Neutral": 0,
-                "Frustrated": 0
+                "Frustrated": 0,
+                "Angry": 0
             },
             "categories": {
                 "Feature Requests": 0,
@@ -297,8 +261,6 @@ def analyze():
                 "Others": 0
             },
             "trends": {},
-            "clusters": {},
-            "solutions": {},
             "feedback": []
         }), 500
 
