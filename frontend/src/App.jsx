@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import 'chart.js/auto'; // Required for Chart.js
-import "./App.css";
+import 'chart.js/auto';
+import './App.css';
 
 // Improved Error Boundary
 const ErrorBoundary = ({ children }) => {
@@ -25,17 +25,17 @@ const ErrorBoundary = ({ children }) => {
 };
 
 function App() {
-  const [appUrl, setAppUrl] = useState("");
+  const [appUrl, setAppUrl] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState("1y"); // Default to 1 year
-
-  const resultsContainerRef = useRef(null); // Track scroll position
+  const [selectedPeriod, setSelectedPeriod] = useState('1y');
+  const resultsContainerRef = useRef(null);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMessage("");
+    e.preventDefault(); // Prevent page reload
+
+    setErrorMessage('');
     setAnalysisResult(null);
     setLoading(true);
 
@@ -45,34 +45,31 @@ function App() {
       return;
     }
 
-    // Save current scroll position
     const scrollTop = resultsContainerRef.current?.scrollTop || 0;
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch('http://127.0.0.1:5000/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: appUrl, period: selectedPeriod }),
       });
 
       if (!response.ok) {
         setAnalysisResult(null);
         const errorData = await response.json();
-        setErrorMessage(errorData.error || "Unknown error");
+        setErrorMessage(errorData.error || 'Unknown error');
         setLoading(false);
         return;
       }
 
       const data = await response.json();
-      console.log("Analysis Result:", data); // Debugging
       setAnalysisResult(data);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error('Error fetching data:', error);
       setAnalysisResult(null);
-      setErrorMessage("Failed to analyze feedback. Check the URL or try again.");
+      setErrorMessage('Failed to analyze feedback. Check the URL or try again.');
     } finally {
       setLoading(false);
-      // Restore scroll position
       if (resultsContainerRef.current) {
         resultsContainerRef.current.scrollTop = scrollTop;
       }
@@ -80,119 +77,80 @@ function App() {
   };
 
   const sentimentData = analysisResult?.sentiment || {
-    Delighted: 0,
     Happy: 0,
     Neutral: 0,
     Frustrated: 0,
-    Angry: 0
   };
 
   const categoryData = analysisResult?.categories || {
     "Feature Requests": 0,
-    "Bugs": 0,
+    Bugs: 0,
     "UX/UI": 0,
-    "Performance": 0,
-    "Others": 0
+    Performance: 0,
+    Others: 0,
   };
 
   const filteredTrends = analysisResult?.trends || {};
-  const trendLabels = Object.keys(filteredTrends).sort().slice(-50); // Limit to last 50 days
+  const trendLabels = Object.keys(filteredTrends).sort().slice(-50);
   const stackedData = {
-    labels: ["Sentiment Trends"],
+    labels: trendLabels,
     datasets: [
       {
-        label: "Delighted",
-        data: [sentimentData.Delighted],
-        backgroundColor: '#6c63ff',
-        stack: 'sentiment'
+        label: 'Happy',
+        data: trendLabels.map(d => filteredTrends[d]?.Happy || 0),
+        backgroundColor: 'var(--dl-color-default-happy)',
+        stack: 'sentiment',
       },
       {
-        label: "Happy",
-        data: [sentimentData.Happy],
-        backgroundColor: '#4ecdc4',
-        stack: 'sentiment'
+        label: 'Neutral',
+        data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0),
+        backgroundColor: 'var(--dl-color-default-neutral)',
+        stack: 'sentiment',
       },
       {
-        label: "Neutral",
-        data: [sentimentData.Neutral],
-        backgroundColor: '#f7dc6f',
-        stack: 'sentiment'
+        label: 'Frustrated',
+        data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0),
+        backgroundColor: 'var(--dl-color-default-frustated)',
+        stack: 'sentiment',
       },
-      {
-        label: "Frustrated",
-        data: [sentimentData.Frustrated],
-        backgroundColor: '#ff5733',
-        stack: 'sentiment'
-      },
-      {
-        label: "Angry",
-        data: [sentimentData.Angry],
-        backgroundColor: '#e74c3c',
-        stack: 'sentiment'
-      },
-    ]
+    ],
   };
 
   const doughnutData = {
-    labels: ["Delighted", "Happy", "Neutral", "Frustrated", "Angry"],
+    labels: ['Happy', 'Neutral', 'Frustrated'],
     datasets: [{
       data: [
-        sentimentData.Delighted,
         sentimentData.Happy,
         sentimentData.Neutral,
         sentimentData.Frustrated,
-        sentimentData.Angry
       ],
-      backgroundColor: ['#6c63ff', '#4ecdc4', '#f7dc6f', '#ff5733', '#e74c3c'],
-    }]
+      backgroundColor: [
+        'var(--dl-color-default-happy)',
+        'var(--dl-color-default-neutral)',
+        'var(--dl-color-default-frustated)',
+      ],
+    }],
   };
 
   const clusters = analysisResult?.clusters || {};
   const solutions = analysisResult?.solutions || {};
 
-  // Generalized feedback table
   const feedbackTable = Object.entries(clusters).map(([category, reviews]) => ({
     category,
-    summary: reviews.slice(0, 3).join(", "),
-    solution: solutions[category] || "N/A",
-    count: reviews.length
+    summary: reviews.slice(0, 3).join(', '),
+    solution: solutions[category] || 'N/A',
+    count: reviews.length,
   }));
 
-  // Feedback Categories Segmented Bar Chart Data
-  const feedbackCategoriesData = {
-    labels: ["Feedback Categories"],
-    datasets: [
-      {
-        label: "Feature Requests",
-        data: [categoryData["Feature Requests"]],
-        backgroundColor: '#ff6b6b',
-        stack: 'feedback'
-      },
-      {
-        label: "Bugs",
-        data: [categoryData["Bugs"]],
-        backgroundColor: '#4ecdc4',
-        stack: 'feedback'
-      },
-      {
-        label: "UX/UI",
-        data: [categoryData["UX/UI"]],
-        backgroundColor: '#f7dc6f',
-        stack: 'feedback'
-      },
-      {
-        label: "Performance",
-        data: [categoryData["Performance"]],
-        backgroundColor: '#9b59b6',
-        stack: 'feedback'
-      },
-      {
-        label: "Others",
-        data: [categoryData["Others"]],
-        backgroundColor: '#e74c3c',
-        stack: 'feedback'
-      },
-    ]
+  const getCategoryColor = (category) => {
+    const colorMap = {
+      "Feature Requests": 'var(--dl-color-default-primarybrand)',
+      Bugs: 'var(--dl-color-default-angry)',
+      "UX/UI": 'var(--dl-color-default-frustated)',
+      Performance: 'var(--dl-color-default-delighted)',
+      Others: 'var(--dl-color-default-happy)',
+    };
+    return colorMap[category] || 'var(--dl-color-default-secondarydark)';
   };
 
   return (
@@ -200,19 +158,45 @@ function App() {
       <ErrorBoundary>
         {!analysisResult && (
           <div className="landing-page">
-            <h1>Capture user feedback with SnappSense</h1>
-            <form onSubmit={handleSubmit}>
-              <input
-                type="text"
-                placeholder="Paste Google Play Store link for your app"
-                value={appUrl}
-                onChange={(e) => setAppUrl(e.target.value)}
-                className="input-field"
-              />
-              <button type="submit" className="analyze-button">
-                SnappSense
-              </button>
-            </form>
+            {/* Navigation Bar */}
+            <header className="nav-bar">
+              <div className="logo-container">
+                <img src="/snappsense-logo.png" alt="SnappSense Logo" className="logo" />
+                <div className="brand-text">SnappSense</div>
+              </div>
+              <button className="feedback-button">Give Feedback</button>
+            </header>
+
+            {/* Hero Section */}
+            <main className="hero-section">
+              <div className="hero-bg"></div>
+              <div className="hero-content">
+                <h1>Capture sense of user feedback with snap</h1>
+                <p>
+                  Paste the link of the app you want to analyze and discover powerful insights into user feedback within seconds. See trends, understand feedback, and enhance your app experience effortlessly.
+                </p>
+                <form className="search-bar" onSubmit={handleSubmit}>
+                  <input
+                    type="text"
+                    placeholder="Paste Play Store link for your app here"
+                    value={appUrl}
+                    onChange={(e) => setAppUrl(e.target.value)}
+                    className="search-input"
+                  />
+                  <button type="submit" className="snap-sense-button">
+                    Snap Sense
+                  </button>
+                </form>
+              </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="footer">
+              <div className="footer-text">
+                GET INSIGHTS ✨ PASTE LINK ✨ SNAP SENSE ✨ GET INSIGHTS ✨ PASTE LINK
+              </div>
+            </footer>
+
             {errorMessage && <p className="error-message">{errorMessage}</p>}
             {loading && <div className="loading-spinner"></div>}
           </div>
@@ -224,27 +208,28 @@ function App() {
             ref={resultsContainerRef}
             style={{
               overflowY: 'auto',
-              maxHeight: 'calc(100vh - 200px)'
+              maxHeight: 'calc(100vh - 200px)',
             }}
           >
             <h2>Analysis Results</h2>
 
             {/* All-Time Sentiment (Semi-circle Doughnut) */}
-                    <div className="chart-container">
-          <Doughnut 
-            data={doughnutData}
-            options={{
-              cutout: '70%',
-              rotation: Math.PI,
-              circumference: Math.PI,
-              plugins: {
-                legend: { position: 'right' }
-              },
-              maintainAspectRatio: false,
-            }}
-            height={400}
-          />
-        </div>
+            <div className="chart-container">
+              <Doughnut 
+                data={doughnutData}
+                options={{
+                  cutout: '70%',
+                  rotation: Math.PI,
+                  circumference: Math.PI,
+                  plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'Sentiment Distribution' },
+                  },
+                  maintainAspectRatio: false,
+                }}
+                height={400}
+              />
+            </div>
 
             {/* Periodic Sentiment Trends (Stacked Bar) */}
             <div className="chart-container">
@@ -288,9 +273,9 @@ function App() {
                       className="bar"
                       style={{
                         width: `${percentage}%`,
-                        backgroundColor: getCategoryColor(category)
+                        backgroundColor: getCategoryColor(category),
                       }}
-                    ></div>
+                    />
                     <span>{category}: {percentage}%</span>
                   </div>
                 ))}
@@ -327,17 +312,5 @@ function App() {
     </div>
   );
 }
-
-// Helper function to map category to color
-const getCategoryColor = (category) => {
-  const colorMap = {
-    "Feature Requests": '#ff6b6b',
-    "Bugs": '#4ecdc4',
-    "UX/UI": '#f7dc6f',
-    "Performance": '#9b59b6',
-    "Others": '#e74c3c'
-  };
-  return colorMap[category] || '#6c63ff';
-};
 
 export default App;

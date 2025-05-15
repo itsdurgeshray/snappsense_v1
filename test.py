@@ -1,15 +1,6 @@
-from google_play_scraper import reviews_all
+from transformers import pipeline
 
-app_id = "nremt.exam"
+classifier = pipeline("text-classification", model="addy88/sst5-sentence-t5-base", top_k=None)
 
-try:
-    reviews = reviews_all(
-        app_id,
-        lang="en",
-        country="us",
-        count=10  # Fetch 10 reviews for simplicity
-    )
-    print(f"Reviews fetched: {len(reviews)}")
-    print("First review content:", reviews[0]['content'])
-except Exception as e:
-    print(f"Error fetching reviews: {str(e)}")
+print(classifier("The app crashes every time I open it. Unusable."))
+# Output: [{'label': 'very negative', 'score': 0.81}, ...]

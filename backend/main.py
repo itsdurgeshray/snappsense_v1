@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from google_play_scraper import reviews_all
 from transformers import pipeline
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime, timedelta
 from collections import defaultdict
 from urllib.parse import urlparse, parse_qs
@@ -9,18 +10,15 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})
 
-# Load Sentiment Analysis Model (5-level using Hugging Face)
-sentiment_analyzer = pipeline(
-    "text-classification",
-    model="cardiffnlp/twitter-roberta-base-sentiment",
-    return_all_scores=True
-)
+# Load Sentiment Analysis Model (5-level using VADER)
+vader_analyzer = SentimentIntensityAnalyzer()
 
 # Load Feedback Categorization Model (Hugging Face)
 try:
     categorization_model = pipeline(
         "zero-shot-classification",
-        model="facebook/bart-large-mnli"
+        model="facebook/bart-large-mnli",
+        multi_class=True  # Enable multi-class classification
     )
 except Exception as e:
     print(f"Model loading error: {str(e)}")
@@ -57,21 +55,13 @@ def get_reviews(app_id):
 
 def get_sentiment_label(review_content):
     try:
-        scores = sentiment_analyzer(review_content)[0]
-        max_score = max(scores, key=lambda x: x['score'])
-        label = max_score['label']
+        vader_scores = vader_analyzer.polarity_scores(review_content)
+        compound_score = vader_scores['compound']
         
-        # Adjust thresholds for better accuracy
-        if label == 'positive':
-            if max_score['score'] >= 0.6:
-                return 'Delighted'
-            else:
-                return 'Happy'
-        elif label == 'negative':
-            if max_score['score'] >= 0.6:
-                return 'Angry'
-            else:
-                return 'Frustrated'
+        if compound_score >= 0.3:  # Lowered threshold from 0.6
+            return 'Happy'
+        elif compound_score <= -0.3:  # Lowered threshold from -0.6
+            return 'Frustrated'
         else:
             return 'Neutral'
     except Exception as e:
@@ -80,11 +70,9 @@ def get_sentiment_label(review_content):
 
 def analyze_sentiment(reviews):
     sentiment_counts = {
-        "Delighted": 0,
         "Happy": 0,
         "Neutral": 0,
-        "Frustrated": 0,
-        "Angry": 0
+        "Frustrated": 0
     }
     
     for review in reviews:
@@ -104,20 +92,17 @@ def categorize_feedback(reviews):
         }
     
     try:
-        categories = {
-            "Feature Requests": 0,
-            "Bugs": 0,
-            "UX/UI": 0,
-            "Performance": 0,
-            "Others": 0
-        }
-        
         candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
         
+        categories = defaultdict(int)
         total_reviews = len(reviews)
         
         for review in reviews:
-            result = categorization_model(review["content"], candidate_labels)
+            result = categorization_model(
+                review["content"],
+                candidate_labels,
+                multi_class=True  # Ensure multi-class classification
+            )
             max_score_index = result['scores'].index(max(result['scores']))
             category = result['labels'][max_score_index]
             
@@ -127,7 +112,7 @@ def categorize_feedback(reviews):
         for category in categories:
             categories[category] = round((categories[category] / total_reviews) * 100, 2) if total_reviews > 0 else 0
         
-        return categories
+        return dict(categories)
     except Exception as e:
         print(f"Feedback categorization error: {str(e)}")
         return {
@@ -140,11 +125,9 @@ def categorize_feedback(reviews):
 
 def calculate_sentiment_trends(reviews, period="1y"):
     trends = defaultdict(lambda: {
-        "Delighted": 0,
         "Happy": 0,
         "Neutral": 0,
-        "Frustrated": 0,
-        "Angry": 0
+        "Frustrated": 0
     })
     
     cutoff = datetime.now()
@@ -183,7 +166,11 @@ def cluster_feedback(reviews):
         candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
         
         for review in reviews:
-            result = categorization_model(review["content"], candidate_labels)
+            result = categorization_model(
+                review["content"],
+                candidate_labels,
+                multi_class=True  # Ensure multi-class classification
+            )
             max_score_index = result['scores'].index(max(result['scores']))
             category = result['labels'][max_score_index]
             
@@ -223,11 +210,9 @@ def analyze():
             return jsonify({
                 "error": "No reviews found",
                 "sentiment": {
-                    "Delighted": 0,
                     "Happy": 0,
                     "Neutral": 0,
-                    "Frustrated": 0,
-                    "Angry": 0
+                    "Frustrated": 0
                 },
                 "categories": {
                     "Feature Requests": 0,
@@ -264,7 +249,11 @@ def analyze():
             candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
             
             for review in reviews[:10]:
-                result = categorization_model(review["content"], candidate_labels)
+                result = categorization_model(
+                    review["content"],
+                    candidate_labels,
+                    multi_class=True
+                )
                 max_score_index = result['scores'].index(max(result['scores']))
                 category = result['labels'][max_score_index]
                 
@@ -296,11 +285,9 @@ def analyze():
         return jsonify({
             "error": "Internal server error",
             "sentiment": {
-                "Delighted": 0,
                 "Happy": 0,
                 "Neutral": 0,
-                "Frustrated": 0,
-                "Angry": 0
+                "Frustrated": 0
             },
             "categories": {
                 "Feature Requests": 0,
