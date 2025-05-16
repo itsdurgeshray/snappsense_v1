@@ -1,11 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google_play_scraper import reviews_all
-from transformers import pipeline
+from transformers import pipeline, AutoConfig
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime, timedelta
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from urllib.parse import urlparse, parse_qs
+import torch
 
 app = Flask(__name__)
 CORS(app, resources={r"/analyze": {"origins": "http://localhost:5173"}})
@@ -15,9 +17,23 @@ vader_analyzer = SentimentIntensityAnalyzer()
 
 # Load Zero-shot Classifier (BART for categorization)
 try:
+    config = AutoConfig.from_pretrained("facebook/bart-large-mnli")
+    config.label2id = {
+        "Feature Requests": 0,
+        "Bugs": 1,
+        "UX/UI": 2,
+        "Navigation Issues": 3,
+        "Performance": 4,
+        "Others": 5
+    }
+    config.id2label = {v: k for k, v in config.label2id.items()}
+    
     categorization_model = pipeline(
         "zero-shot-classification",
-        model="facebook/bart-large-mnli"
+        model="facebook/bart-large-mnli",
+        config=config,
+        device=0 if torch.cuda.is_available() else -1,
+        batch_size=2048
     )
 except Exception as e:
     print(f"Model loading error: {str(e)}")
@@ -41,7 +57,7 @@ def get_reviews(app_id):
             lang="en",
             country="us",
             count=1000,
-            sleep_milliseconds=500  # Rate limiting
+            sleep_milliseconds=500
         )
         return [
             {
@@ -74,19 +90,11 @@ def get_sentiment_label(review_content):
         return 'Neutral'
 
 def analyze_sentiment(reviews):
-    sentiment_counts = {
-        "Delighted": 0,
-        "Happy": 0,
-        "Neutral": 0,
-        "Frustrated": 0,
-        "Angry": 0
-    }
-    
+    sentiment_counts = defaultdict(int)
     for review in reviews:
         label = get_sentiment_label(review["content"])
         sentiment_counts[label] += 1
-    
-    return sentiment_counts
+    return dict(sentiment_counts)
 
 def categorize_feedback(reviews):
     if not categorization_model:
@@ -94,40 +102,47 @@ def categorize_feedback(reviews):
             "Feature Requests": 0,
             "Bugs": 0,
             "UX/UI": 0,
+            "Navigation Issues": 0,
             "Performance": 0,
             "Others": 0
         }
     
-    try:
-        candidate_labels = ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"]
-        categories = defaultdict(int)
-        total_reviews = len(reviews)
+    candidate_labels = [
+        "Feature Requests",
+        "Bugs",
+        "UX/UI",
+        "Navigation Issues",
+        "Performance",
+        "Others"
+    ]
+    texts = [review["content"] for review in reviews]
+    
+    results = categorization_model(
+        texts,
+        candidate_labels,
+        multi_label=False,
+        batch_size=2048
+    )
+    
+    categories = defaultdict(int)
+    total_reviews = len(reviews)
+    
+    for i in range(total_reviews):
+        scores = results[i]['scores']
+        labels = results[i]['labels']
+        max_score_index = scores.index(max(scores))
+        category = labels[max_score_index]
         
-        for review in reviews:
-            result = categorization_model(
-                review["content"],
-                candidate_labels,
-                multi_class=True
-            )
-            max_score_index = result['scores'].index(max(result['scores']))
-            category = result['labels'][max_score_index]
-            
-            categories[category] += 1
+        # Post-processing logic to handle specific keywords
+        if "opened not Able to go back" in texts[i].lower() or "force exit" in texts[i].lower():
+            category = "Bugs"
         
-        # Calculate percentages
-        for category in categories:
-            categories[category] = round((categories[category] / total_reviews) * 100, 2) if total_reviews > 0 else 0
-        
-        return dict(categories)
-    except Exception as e:
-        print(f"Feedback categorization error: {str(e)}")
-        return {
-            "Feature Requests": 0,
-            "Bugs": 0,
-            "UX/UI": 0,
-            "Performance": 0,
-            "Others": 0
-        }
+        categories[category] += 1
+    
+    for category in categories:
+        categories[category] = round((categories[category] / total_reviews) * 100, 2) if total_reviews > 0 else 0
+    
+    return dict(categories)
 
 def calculate_sentiment_trends(reviews, period="1y"):
     trends = defaultdict(lambda: {
@@ -169,6 +184,7 @@ def analyze():
     try:
         app_url = request.json.get('url', '')
         period = request.json.get('period', '1y')
+        
         if not app_url:
             return jsonify({"error": "No URL provided"}), 400
 
@@ -191,6 +207,7 @@ def analyze():
                     "Feature Requests": 0,
                     "Bugs": 0,
                     "UX/UI": 0,
+                    "Navigation Issues": 0,
                     "Performance": 0,
                     "Others": 0
                 },
@@ -201,23 +218,41 @@ def analyze():
         # Calculate sentiment
         sentiment = analyze_sentiment(reviews)
         
-        # Categorize feedback
+        # Categorize feedback (batch processing)
         categories = categorize_feedback(reviews)
         
         # Calculate trends
         trends = calculate_sentiment_trends(reviews, period)
         
-        # Prepare feedback items
+        # Prepare feedback samples using batch results
         categorized_feedback = []
         if categorization_model:
-            for review in reviews[:10]:
-                result = categorization_model(
-                    review["content"],
-                    ["Feature Requests", "Bugs", "UX/UI", "Performance", "Others"],
-                    multi_class=True
-                )
-                max_score_index = result['scores'].index(max(result['scores']))
-                category = result['labels'][max_score_index]
+            candidate_labels = [
+                "Feature Requests",
+                "Bugs",
+                "UX/UI",
+                "Navigation Issues",
+                "Performance",
+                "Others"
+            ]
+            texts_for_samples = [review["content"] for review in reviews[:10]]
+            sample_results = categorization_model(
+                texts_for_samples,
+                candidate_labels,
+                multi_label=False,
+                batch_size=10
+            )
+            
+            for i, review in enumerate(reviews[:10]):
+                scores = sample_results[i]['scores']
+                labels = sample_results[i]['labels']
+                max_score_index = scores.index(max(scores))
+                category = labels[max_score_index]
+                
+                # Post-processing logic to handle specific keywords
+                if "opened not Able to go back" in review["content"].lower() or "force exit" in review["content"].lower():
+                    category = "Bugs"
+                
                 categorized_feedback.append({
                     "content": review["content"],
                     "category": category,
@@ -257,6 +292,7 @@ def analyze():
                 "Feature Requests": 0,
                 "Bugs": 0,
                 "UX/UI": 0,
+                "Navigation Issues": 0,
                 "Performance": 0,
                 "Others": 0
             },
