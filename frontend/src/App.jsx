@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import 'chart.js/auto';
+import axios from 'axios';
 import './App.css';
 
 function App() {
@@ -9,38 +10,35 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('1y');
+  const [lastAnalyzedUrl, setLastAnalyzedUrl] = useState('');
   const resultsContainerRef = useRef(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setAnalysisResult(null);
-    setLoading(true);
-
-    if (!appUrl) {
-      setErrorMessage("Please enter a valid URL.");
-      setLoading(false);
-      return;
+  // Refetch data when period changes
+  useEffect(() => {
+    if (lastAnalyzedUrl && analysisResult) {
+      fetchAnalysis(lastAnalyzedUrl, selectedPeriod);
     }
+  }, [selectedPeriod]);
 
-    const scrollTop = resultsContainerRef.current?.scrollTop || 0;
+  const fetchAnalysis = async (url, period) => {
+    setLoading(true);
+    setErrorMessage('');
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: appUrl, period: selectedPeriod }),
+      const response = await axios.post('http://127.0.0.1:5001/analyze', {
+        url: url,
+        period: period,
       });
 
-      if (!response.ok) {
+      if (response.status !== 200) {
         setAnalysisResult(null);
-        const errorData = await response.json();
+        const errorData = response.data;
         setErrorMessage(errorData.error || 'Unknown error');
         setLoading(false);
         return;
       }
 
-      const data = await response.json();
+      const data = response.data;
       setAnalysisResult(data);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -48,10 +46,21 @@ function App() {
       setErrorMessage('Failed to analyze feedback. Check the URL or try again.');
     } finally {
       setLoading(false);
-      if (resultsContainerRef.current) {
-        resultsContainerRef.current.scrollTop = scrollTop;
-      }
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setAnalysisResult(null);
+
+    if (!appUrl) {
+      setErrorMessage("Please enter a valid URL.");
+      return;
+    }
+
+    setLastAnalyzedUrl(appUrl);
+    await fetchAnalysis(appUrl, selectedPeriod);
   };
 
   const sentimentData = analysisResult?.sentiment || {
@@ -66,43 +75,45 @@ function App() {
     "Feature Requests": 0,
     Bugs: 0,
     "UX/UI": 0,
+    "Navigation Issues": 0,
     Performance: 0,
     Others: 0,
   };
 
   const filteredTrends = analysisResult?.trends || {};
-  const trendLabels = Object.keys(filteredTrends).sort().slice(-50);
+  // Sort labels chronologically and use all data points (not limited to 50)
+  const trendLabels = Object.keys(filteredTrends).sort();
   const stackedData = {
     labels: trendLabels,
     datasets: [
       {
         label: "Delighted",
         data: trendLabels.map(d => filteredTrends[d]?.Delighted || 0),
-        backgroundColor: 'var(--dl-color-default-delighted)',
+        backgroundColor: '#ff6b6b',
         stack: 'sentiment',
       },
       {
         label: "Happy",
         data: trendLabels.map(d => filteredTrends[d]?.Happy || 0),
-        backgroundColor: 'var(--dl-color-default-happy)',
+        backgroundColor: '#ffc0cb',
         stack: 'sentiment',
       },
       {
         label: "Neutral",
         data: trendLabels.map(d => filteredTrends[d]?.Neutral || 0),
-        backgroundColor: 'var(--dl-color-default-neutral)',
+        backgroundColor: '#f7dc6f',
         stack: 'sentiment',
       },
       {
         label: "Frustrated",
         data: trendLabels.map(d => filteredTrends[d]?.Frustrated || 0),
-        backgroundColor: 'var(--dl-color-default-frustated)',
+        backgroundColor: '#9b59b6',
         stack: 'sentiment',
       },
       {
         label: "Angry",
         data: trendLabels.map(d => filteredTrends[d]?.Angry || 0),
-        backgroundColor: 'var(--dl-color-default-angry)',
+        backgroundColor: '#e74c3c',
         stack: 'sentiment',
       },
     ],
@@ -110,35 +121,40 @@ function App() {
 
   const doughnutData = {
     labels: ["Delighted", "Happy", "Neutral", "Frustrated", "Angry"],
-    datasets: [{
-      data: [
-        sentimentData.Delighted,
-        sentimentData.Happy,
-        sentimentData.Neutral,
-        sentimentData.Frustrated,
-        sentimentData.Angry,
-      ],
-      backgroundColor: [
-        'var(--dl-color-default-delighted)',
-        'var(--dl-color-default-happy)',
-        'var(--dl-color-default-neutral)',
-        'var(--dl-color-default-frustated)',
-        'var(--dl-color-default-angry)',
-      ],
-    }],
+    datasets: [
+      {
+        data: [
+          sentimentData.Delighted || 0,
+          sentimentData.Happy || 0,
+          sentimentData.Neutral || 0,
+          sentimentData.Frustrated || 0,
+          sentimentData.Angry || 0,
+        ],
+        backgroundColor: [
+          '#ff6b6b',
+          '#ffc0cb',
+          '#f7dc6f',
+          '#9b59b6',
+          '#e74c3c',
+        ],
+      },
+    ],
   };
 
-  const feedbackTable = analysisResult?.feedback || [];
+  const feedbackTable = analysisResult?.feedback?.filter(
+    (item) => item.sentiment !== "Delighted" && item.sentiment !== "Happy"
+  ) || [];
 
   const getCategoryColor = (category) => {
     const colorMap = {
-      "Feature Requests": 'var(--dl-color-default-primarybrand)',
-      Bugs: 'var(--dl-color-default-angry)',
-      "UX/UI": 'var(--dl-color-default-frustated)',
-      Performance: 'var(--dl-color-default-delighted)',
-      Others: 'var(--dl-color-default-happy)',
+      "Feature Requests": 'var(--primary-brand)',
+      Bugs: 'var(--angry)',
+      "UX/UI": 'var(--frustated)',
+      "Navigation Issues": 'var(--frustated)',
+      Performance: 'var(--delighted)',
+      Others: 'var(--happy)',
     };
-    return colorMap[category] || 'var(--dl-color-default-secondarydark)';
+    return colorMap[category] || 'var(--secondary-dark)';
   };
 
   return (
@@ -146,30 +162,38 @@ function App() {
       {!analysisResult && (
         <div className="landing-page">
           {/* Navigation Bar */}
-          <header className="nav-bar">
+          <header className="nav-bar" role="banner">
             <div className="logo-container">
               <img src="/snappsense-logo.png" alt="SnappSense Logo" className="logo" />
               <div className="brand-text">SnappSense</div>
             </div>
-            <button className="feedback-button">Give Feedback</button>
+            <button className="feedback-button" aria-label="Give Feedback">
+              Give Feedback
+            </button>
           </header>
 
           {/* Hero Section */}
-          <main className="hero-section">
+          <main className="hero-section" aria-labelledby="hero-heading hero-description">
             <div className="hero-bg"></div>
             <div className="hero-content">
-              <h1>Capture sense of user feedback with snap</h1>
-              <p>
-                Paste the link of the app you want to analyze and discover powerful insights into user feedback within seconds.
+              <h1 id="hero-heading">Capture sense of user feedback with snap</h1>
+              <p id="hero-description">
+                Paste the link of the app you want to analyze and discover powerful insights into user feedback within seconds. See trends, understand feedback, and enhance your app experience effortlessly.
               </p>
               <form className="search-bar" onSubmit={handleSubmit}>
                 <input
                   type="text"
-                  placeholder="Paste Play Store link for your app here"
+                  placeholder="paste playstore link for your app here"
                   value={appUrl}
                   onChange={(e) => setAppUrl(e.target.value)}
                   className="search-input"
+                  id="app-url"
+                  aria-labelledby="search-input-label"
+                  aria-required="true"
                 />
+                <label htmlFor="app-url" className="visually-hidden" id="search-input-label">
+                  Play Store URL
+                </label>
                 <button type="submit" className="snap-sense-button">
                   Snap Sense
                 </button>
@@ -177,118 +201,182 @@ function App() {
             </div>
           </main>
 
-          {/* Footer */}
-          <footer className="footer">
-            <div className="footer-text">
-              GET INSIGHTS ✨ PASTE LINK ✨ SNAP SENSE ✨ GET INSIGHTS ✨ PASTE LINK
+          <footer className="footer" role="contentinfo">
+            <div className="footer-text" aria-label="Footer Text">
+              GET INSIGHTS ✨ PASTE LINK ✨ SNAP SENSE ✨ GET INSIGHTS ✨ PASTE LINK ✨ SNAP SENSE ✨ GET INSIGHTS ✨ PASTE LINK ✨ SNAP SENSE ✨
             </div>
           </footer>
 
-          {errorMessage && <p className="error-message">{errorMessage}</p>}
-          {loading && <div className="loading-spinner"></div>}
+          {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
+          {loading && <div className="loading-spinner" aria-busy="true" aria-label="Loading..."></div>}
         </div>
       )}
 
       {analysisResult && (
-        <div 
-          className="results-page" 
+        <div
+          className="results-page"
           ref={resultsContainerRef}
-          style={{
-            overflowY: 'auto',
-            maxHeight: 'calc(100vh - 200px)',
-          }}
+          aria-labelledby="results-heading"
         >
-          <h2>Analysis Results</h2>
-
-          {/* Sentiment Distribution (Doughnut Chart) */}
-          <div className="chart-container">
-            <Doughnut 
-              data={doughnutData}
-              options={{
-                cutout: '70%',
-                rotation: Math.PI,
-                circumference: Math.PI,
-                plugins: {
-                  legend: { display: false },
-                  title: { display: true, text: 'Sentiment Distribution' },
-                },
-                maintainAspectRatio: false,
-              }}
-              height={400}
+          {/* App Info Header */}
+          <div className="app-header">
+            <img
+              src={analysisResult.icon || "https://via.placeholder.com/80"}
+              alt={`${analysisResult.app_name} Icon`}
+              className="app-icon"
             />
-          </div>
-
-          {/* Sentiment Trends (Stacked Bar Chart) */}
-          <div className="chart-container">
-            <Bar 
-              data={stackedData}
-              options={{
-                responsive: true,
-                scales: {
-                  x: { stacked: true, maxBarThickness: 40 },
-                  y: { stacked: true }
-                },
-                plugins: {
-                  legend: { position: 'top' },
-                  title: { display: true, text: 'Sentiment Trends' }
-                },
-                aspectRatio: 2.5
-              }}
-              height={400}
-            />
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="period-selector"
-            >
-              <option value="1y">1 Year</option>
-              <option value="6m">6 Months</option>
-              <option value="3m">3 Months</option>
-              <option value="1m">1 Month</option>
-              <option value="1w">1 Week</option>
-            </select>
-          </div>
-
-          {/* Feedback Categories (Segmented Progress Bar) */}
-          <div className="segmented-progress">
-            <h3>Feedback Categories</h3>
-            <div className="progress-container">
-              {Object.entries(categoryData).map(([category, percentage]) => (
-                <div key={category} className="progress-bar">
-                  <div
-                    className="bar"
-                    style={{
-                      width: `${percentage}%`,
-                      backgroundColor: getCategoryColor(category),
-                    }}
-                  />
-                  <span>{category}: {percentage}%</span>
-                </div>
-              ))}
+            <div className="app-details">
+              <h1>{analysisResult.app_name || "App Name"}</h1>
+              <div className="app-tags">
+                <span className="app-tag">{analysisResult.category || "Category"}</span>
+                <span className="app-tag">#4 top free shopping</span>
+              </div>
             </div>
           </div>
 
-          {/* Feedback Table */}
-          <div className="feedback-table">
-            <h3>Feedback Samples</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Category</th>
-                  <th>Feedback</th>
-                  <th>Solution</th>
-                </tr>
-              </thead>
-              <tbody>
-                {feedbackTable.map((item, index) => (
-                  <tr key={index}>
-                    <td>{item.category}</td>
-                    <td>{item.content}</td>
-                    <td>{item.solution}</td>
-                  </tr>
+          <div className="results-grid">
+            {/* Row 1 Left: Sentiment Trends */}
+            <div className="chart-card">
+              <div className="chart-header">
+                <h3>Periodic Sentiment Trends</h3>
+                <select
+                  value={selectedPeriod}
+                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  className="period-selector"
+                  aria-label="Select Time Period"
+                  disabled={loading}
+                >
+                  <option value="1y">1y</option>
+                  <option value="6m">6m</option>
+                  <option value="3m">3m</option>
+                  <option value="1m">1m</option>
+                  <option value="1w">1w</option>
+                </select>
+              </div>
+              <div className="chart-wrapper">
+                {loading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <div className="loading-spinner"></div>
+                  </div>
+                ) : (
+                  <Bar
+                    data={stackedData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, display: false, beginAtZero: true }
+                      },
+                      plugins: {
+                        legend: { display: false },
+                      },
+                      barPercentage: 0.6,
+                      categoryPercentage: 0.8
+                    }}
+                    role="img"
+                    aria-label="Sentiment Trends Chart"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Row 1 Right: All Time Sentiments (Semi-Circle) */}
+            <div className="chart-card">
+              <div className="chart-header">
+                <h3>All Time Sentiments</h3>
+              </div>
+              <div className="doughnut-container">
+                <div style={{ position: 'relative', height: '200px', width: '100%' }}>
+                  <Doughnut
+                    data={doughnutData}
+                    options={{
+                      rotation: -90,
+                      circumference: 180,
+                      cutout: '70%',
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                      },
+                      maintainAspectRatio: false,
+                    }}
+                  />
+                </div>
+                <div className="total-reviews">
+                  {Object.values(sentimentData).reduce((a, b) => a + b, 0)} Reviews
+                </div>
+                <div className="legend-container">
+                  {['Delighted', 'Happy', 'Neutral', 'Angry', 'Frustrated'].map((label, i) => (
+                    <div key={label} className="legend-item">
+                      <div
+                        className="legend-color"
+                        style={{ backgroundColor: doughnutData.datasets[0].backgroundColor[i] }}
+                      />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2 Left: Feedback Analysis Table */}
+            <div className="chart-card">
+              <div className="chart-header">
+                <h3>Feedback Analysis Table</h3>
+              </div>
+              <div className="feedback-table-container">
+                <table className="feedback-table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Generalized Feedback</th>
+                      <th>AI Solution</th>
+                      <th>Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feedbackTable.map((item, index) => (
+                      <tr key={index}>
+                        <td>
+                          <span className={`tag ${item.category.toLowerCase().replace(' ', '')}`}>
+                            {item.category}
+                          </span>
+                        </td>
+                        <td>{item.content}</td>
+                        <td>{item.solution}</td>
+                        <td>{item.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Row 2 Right: Feedback Category */}
+            <div className="chart-card">
+              <div className="chart-header">
+                <h3>Feedback Category</h3>
+              </div>
+              <div className="category-list">
+                {Object.entries(categoryData).map(([category, percentage]) => (
+                  <div key={category} className="category-item">
+                    <div className="category-header">
+                      <span>{category}</span>
+                      <span>{percentage}%</span>
+                    </div>
+                    <div className="progress-bg">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: getCategoryColor(category)
+                        }}
+                      />
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
